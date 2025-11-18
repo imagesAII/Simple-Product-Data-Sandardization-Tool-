@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Product Data Standardization Tool</title>
+  <style>
+:root{
+--bg:#0a1a33;
+--card:#ffffff10;
+--accent:#4da3ff;
+--muted:#9bb3d1;
+--glow:0 0 12px rgba(77,163,255,.8);
+}
+*{box-sizing:border-box;font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+body{
+margin:0;min-height:100vh;
+background:linear-gradient(180deg,#0a1a33,#081629,#061221);
+padding:20px;color:white;
+}
+.app{max-width:1100px;margin:0 auto}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+h1{font-size:20px;margin:0;color:#e8efff}
+.controls{display:flex;gap:8px}
+button{
+background:var(--accent);
+color:white;
+border:0;padding:8px 12px;border-radius:8px;cursor:pointer;
+transition:0.25s;
+box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
+button:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.5)}
+button:active{transform:scale(.96);box-shadow:var(--glow)}
+button.ghost{
+background:transparent;color:var(--accent);
+border:1px solid rgba(77,163,255,.25);
+}
+.card{
+background:var(--card);
+border-radius:12px;padding:14px;
+box-shadow:0 6px 18px rgba(0,0,0,.35);
+backdrop-filter:blur(8px);
+}
+.grid{display:grid;grid-template-columns:1fr 320px;gap:14px}
+table{width:100%;border-collapse:collapse;color:#e0eaff}
+thead th{text-align:left;padding:8px 10px;border-bottom:1px solid #334155;color:var(--muted)}
+tbody td{padding:8px 10px;border-bottom:1px dashed #1e293b}
+.small{font-size:12px;color:var(--muted)}
+.actions{display:flex;gap:6px}
+input,select,textarea{
+width:100%;padding:8px;border-radius:8px;
+border:1px solid #2c3d55;background:#0f1c33;color:white;
+}
+.sidebar h3{margin-top:0;color:#e0ecff}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#1e3a5f;color:#8cc8ff;font-weight:600;font-size:12px}
+.status-missing{color:#ff6b6b;font-weight:700}
+.summary{display:flex;gap:8px;flex-wrap:wrap}
+.summary>div{background:#112244;padding:8px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.4);font-size:13px;color:#d7e7ff}
+footer{margin-top:16px;font-size:13px;color:var(--muted)}
+@media(max-width:880px){.grid{grid-template-columns:1fr;}.controls{flex-wrap:wrap}}
+/* Modal */
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);align-items:center;justify-content:center}
+#modal>div{background:#102040;color:white;border-radius:12px}
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Product Data Standardization Tool <span class="small">— HTML / CSS / JS mini CMS</span></h1>
+      <div class="controls">
+        <button id="addBtn">Add Product</button>
+        <button id="validateBtn" class="ghost">Validate</button>
+        <button id="normalizeBtn" class="ghost">Normalize</button>
+        <button id="mapCatBtn" class="ghost">Map Categories</button>
+        <button id="exportBtn">Export JSON</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card" style="min-height:320px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="small">Products (<span id="count">0</span>)</div>
+          <div class="small">Use inline edit, or select a row and click the pencil</div>
+        </div>
+
+        <div style="overflow:auto;max-height:520px">
+          <table id="productsTable">
+            <thead>
+              <tr>
+                <th style="width:36px">#</th>
+                <th>Title</th>
+                <th>SKU</th>
+                <th>Price</th>
+                <th>Category</th>
+                <th style="width:160px">Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+      </section>
+
+      <aside class="card sidebar">
+        <h3>Inspector & Actions</h3>
+        <div style="margin-bottom:8px" class="summary">
+          <div id="missingCount">Missing: 0</div>
+          <div id="invalidCount">Invalid: 0</div>
+          <div id="mappedCount">Mapped: 0</div>
+        </div>
+
+        <div style="margin-top:12px">
+          <label class="small">Selected product JSON</label>
+          <textarea id="inspectJson" rows="10" readonly></textarea>
+        </div>
+
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button id="fixMissing" class="ghost">Auto-Fill Missing</button>
+          <button id="deleteBtn" class="ghost">Delete</button>
+        </div>
+
+        <hr style="margin:12px 0">
+        <div>
+          <label class="small">Import sample data</label>
+          <input id="importFile" type="file" accept="application/json,.json" />
+        </div>
+        <div style="margin-top:8px">
+          <label class="small">Quick add (JSON array)</label>
+          <textarea id="quickJson" rows="4" placeholder='[{"title":"T-shirt","sku":"TS001","price":"299","category":"clothing"}]'></textarea>
+          <div style="display:flex;gap:8px;margin-top:6px"><button id="quickAdd">Add JSON</button><button id="clearBtn" class="ghost">Clear All</button></div>
+        </div>
+
+        <footer>
+          <div class="small">Features: validate price & sku, detect missing attributes, normalize titles, map category from keywords, export JSON/CSV.</div>
+        </footer>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Edit modal (simple) -->
+  <div id="modal" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,.5);align-items:center;justify-content:center">
+    <div style="width:720px;max-width:96%;background:white;padding:14px;border-radius:12px">
+      <h3 style="margin-top:0">Edit Product</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <label class="small">Title</label>
+          <input id="m_title" />
+        </div>
+        <div>
+          <label class="small">SKU</label>
+          <input id="m_sku" />
+        </div>
+        <div>
+          <label class="small">Price</label>
+          <input id="m_price" />
+        </div>
+        <div>
+          <label class="small">Category</label>
+          <input id="m_category" />
+        </div>
+        <div style="grid-column:1/-1">
+          <label class="small">Description</label>
+          <textarea id="m_desc" rows="3"></textarea>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+        <button id="saveBtn">Save</button>
+        <button id="cancelBtn" class="ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Data store (in-memory) ---
+    let products = []
+    let selectedIndex = null
+
+    // Category mapping rules (very small example)
+    const CATEGORY_MAP = [
+      {keywords: ['t-shirt','tee','tshirt','shirt'], category: 'Clothing'},
+      {keywords: ['jeans','denim','pant'], category: 'Clothing'},
+      {keywords: ['phone','mobile','charger'], category: 'Electronics'},
+      {keywords: ['laptop','notebook'], category: 'Electronics'},
+      {keywords: ['soap','shampoo','skincare'], category: 'Personal Care'},
+    ]
+
+    // --- Helpers ---
+    const $ = id => document.getElementById(id)
+    function renderTable(){
+      const tbody = document.querySelector('#productsTable tbody')
+      tbody.innerHTML = ''
+      products.forEach((p,i)=>{
+        const tr = document.createElement('tr')
+        tr.innerHTML = `
+          <td>${i+1}</td>
+          <td contenteditable='true' data-field='title' data-index='${i}'>${escapeHtml(p.title||'')}</td>
+          <td contenteditable='true' data-field='sku' data-index='${i}'>${escapeHtml(p.sku||'')}</td>
+          <td contenteditable='true' data-field='price' data-index='${i}'>${p.price||''}</td>
+          <td contenteditable='true' data-field='category' data-index='${i}'>${escapeHtml(p.category||'')}</td>
+          <td>
+            <div class='actions'>
+              <button data-action='inspect' data-index='${i}' class='ghost'>Inspect</button>
+              <button data-action='edit' data-index='${i}' class='ghost'>✏️</button>
+            </div>
+            <div class='small'>${statusFor(p)}</div>
+          </td>`
+        tbody.appendChild(tr)
+      })
+      $('count').innerText = products.length
+      attachListeners()
+      updateSummary()
+    }
+
+    function escapeHtml(s){return (s||'').toString().replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+    function attachListeners(){
+      document.querySelectorAll('[data-action]').forEach(btn=>{
+        btn.onclick = e => {
+          const i = +e.currentTarget.dataset.index
+          const action = e.currentTarget.dataset.action
+          if(action==='inspect') return inspectProduct(i)
+          if(action==='edit') return openModal(i)
+        }
+      })
+      // inline edit handling
+      document.querySelectorAll('[contenteditable=true]').forEach(el=>{
+        el.onblur = e => {
+          const i = +e.currentTarget.dataset.index
+          const f = e.currentTarget.dataset.field
+          products[i][f] = e.currentTarget.innerText.trim()
+          updateSummary()
+        }
+      })
+    }
+
+    function statusFor(p){
+      const missing = detectMissingFor(p)
+      const invalid = detectInvalidFor(p)
+      if(missing.length) return `<span class='status-missing'>Missing: ${missing.join(', ')}</span>`
+      if(invalid.length) return `Invalid: ${invalid.join(', ')}`
+      return `<span class='badge'>OK</span>`
+    }
+
+    // --- Validation & Detection ---
+    function detectMissingFor(p){
+      const required = ['title','sku','price','category']
+      return required.filter(k=>!(p[k]||'').toString().trim())
+    }
+    function detectInvalidFor(p){
+      const issues = []
+      // price must be numeric > 0
+      if(p.price && isNaN(Number(p.price))) issues.push('price')
+      // SKU simple format: letters/numbers and dash underscore
+      if(p.sku && !/^[A-Za-z0-9-_]{3,20}$/.test(p.sku)) issues.push('sku')
+      return issues
+    }
+
+    function updateSummary(){
+      const missingCount = products.reduce((s,p)=>s + (detectMissingFor(p).length>0?1:0),0)
+      const invalidCount = products.reduce((s,p)=>s + (detectInvalidFor(p).length>0?1:0),0)
+      const mappedCount = products.reduce((s,p)=>s + (p.mapped?1:0),0)
+      $('missingCount').innerText = 'Missing: '+missingCount
+      $('invalidCount').innerText = 'Invalid: '+invalidCount
+      $('mappedCount').innerText = 'Mapped: '+mappedCount
+      document.querySelectorAll('#productsTable tbody tr .small').forEach(el=>el.innerHTML = statusFor(products[+el.closest('tr').querySelector('td').innerText - 1]))
+    }
+
+    // --- Normalization ---
+    function normalizeProduct(p){
+      // Trim all strings, normalize whitespace
+      for(const k in p) if(typeof p[k] === 'string') p[k] = p[k].trim().replace(/\s+/g,' ')
+      // Title case for title
+      if(p.title) p.title = p.title.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ')
+      // Price to two decimals
+      if(p.price) {
+        const n = Number(p.price)
+        p.price = isNaN(n)?p.price: (Math.round(n*100)/100).toString()
+      }
+      // SKU uppercase
+      if(p.sku) p.sku = p.sku.toUpperCase()
+      return p
+    }
+
+    // --- Category mapping ---
+    function mapCategoryFor(p){
+      if(p.category && p.category.trim()) return false // already present
+      const text = (p.title + ' ' + (p.description||'') + ' ' + (p.desc||'')).toLowerCase()
+      for(const rule of CATEGORY_MAP){
+        for(const kw of rule.keywords) if(text.includes(kw)){
+          p.category = rule.category
+          p.mapped = true
+          return true
+        }
+      }
+      return false
+    }
+
+    // --- Actions ---
+    function validateAll(){
+      const results = products.map((p,i)=>({index:i,missing:detectMissingFor(p),invalid:detectInvalidFor(p)}))
+      renderTable()
+      alert('Validation complete — see inspector for counts')
+      return results
+    }
+
+    function normalizeAll(){
+      products = products.map(p=>normalizeProduct(p))
+      renderTable()
+    }
+
+    function mapCategoriesAll(){
+      let changed = 0
+      products.forEach(p=>{ if(mapCategoryFor(p)) changed++ })
+      renderTable()
+      alert(changed + ' products mapped')
+    }
+
+    function inspectProduct(i){
+      selectedIndex = i
+      $('inspectJson').value = JSON.stringify(products[i],null,2)
+    }
+
+    function openModal(i){
+      const p = products[i]
+      $('m_title').value = p.title||''
+      $('m_sku').value = p.sku||''
+      $('m_price').value = p.price||''
+      $('m_category').value = p.category||''
+      $('m_desc').value = p.description||p.desc||''
+      $('modal').style.display = 'flex'
+      selectedIndex = i
+    }
+
+    function saveModal(){
+      const p = products[selectedIndex]
+      p.title = $('m_title').value.trim()
+      p.sku = $('m_sku').value.trim()
+      p.price = $('m_price').value.trim()
+      p.category = $('m_category').value.trim()
+      p.description = $('m_desc').value.trim()
+      $('modal').style.display = 'none'
+      renderTable()
+    }
+
+    function addProduct(p){ products.push(p); renderTable() }
+
+    function autoFillMissing(i){
+      const p = products[i]
+      // basic heuristics
+      if(!p.title && p.description) p.title = p.description.split('. ')[0].slice(0,60)
+      if(!p.price) p.price = '0'
+      if(!p.sku) p.sku = (p.title||'ITEM').replace(/[^A-Za-z0-9]/g,'').slice(0,8) + Math.floor(Math.random()*90+10)
+      mapCategoryFor(p)
+      normalizeProduct(p)
+      renderTable()
+    }
+
+    // --- Export / Import ---
+    function exportJSON(){
+      const blob = new Blob([JSON.stringify(products,null,2)],{type:'application/json'})
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'products.json'
+      a.click(); URL.revokeObjectURL(url)
+    }
+
+    function importJSON(file){
+      const reader = new FileReader()
+      reader.onload = e => {
+        try{
+          const arr = JSON.parse(e.target.result)
+          if(Array.isArray(arr)){
+            products = products.concat(arr.map(x=>Object.assign({},x)))
+            renderTable()
+          } else alert('JSON must be an array of products')
+        }catch(err){alert('Invalid JSON')}
+      }
+      reader.readAsText(file)
+    }
+
+    // --- Wire UI ---
+    document.getElementById('addBtn').onclick = ()=>{ const p = {title:'New product',sku:'NEW'+Math.floor(Math.random()*900),price:'0',category:'',description:''}; addProduct(p); openModal(products.length-1) }
+    document.getElementById('validateBtn').onclick = validateAll
+    document.getElementById('normalizeBtn').onclick = ()=>{ normalizeAll(); alert('Normalized') }
+    document.getElementById('mapCatBtn').onclick = mapCategoriesAll
+    document.getElementById('exportBtn').onclick = exportJSON
+    document.getElementById('clearBtn').onclick = ()=>{ if(confirm('Clear all products?')) { products=[]; renderTable()} }
+    document.getElementById('quickAdd').onclick = ()=>{
+      try{ const arr = JSON.parse($('quickJson').value); if(Array.isArray(arr)){ products = products.concat(arr); renderTable(); $('quickJson').value=''; } else alert('Provide JSON array') }catch(e){alert('Invalid JSON')}
+    }
+    document.getElementById('saveBtn').onclick = saveModal
+    document.getElementById('cancelBtn').onclick = ()=>$('modal').style.display='none'
+    document.getElementById('fixMissing').onclick = ()=>{ if(selectedIndex==null) return alert('Select a product (Inspect)'); autoFillMissing(selectedIndex) }
+    document.getElementById('deleteBtn').onclick = ()=>{ if(selectedIndex==null) return alert('Select a product (Inspect)'); if(confirm('Delete selected?')){ products.splice(selectedIndex,1); selectedIndex=null; renderTable(); $('inspectJson').value=''} }
+    document.getElementById('importFile').onchange = e => { const f = e.target.files[0]; if(f) importJSON(f); e.target.value = '' }
+
+    // --- Demo sample data ---
+    const SAMPLE = [
+      {title:'blue cotton tshirt', sku:'ts-01', price:'299', description:'A comfortable cotton t-shirt for men.'},
+      {title:'denim jeans 32', sku:'jeans_32', price:'899', description:'Slim fit denim pant.'},
+      {title:'Fast Charger', sku:'chg-200', price:'499', description:'USB-C fast charger for mobile phones.'},
+      {title:'Herbal Shampoo', sku:'shmp01', price:'', description:'Natural shampoo for hair care.'},
+      {title:'mystery box', sku:'?*badsku', price:'free', description:''}
+    ]
+    products = SAMPLE.map(p=>Object.assign({},p))
+    renderTable()
+
+  </script>
+</body>
+</html>
